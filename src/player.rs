@@ -66,6 +66,7 @@ fn create_player(
 const SPEED: f32 = 35.0;
 const ROT_SPEED: f32 = 10.0;
 const BASE_JUMP_STRNGTH: f32 = 7.5;
+const BASE_FLIP_STRNGTH: f32 = 20.0;
 pub const MAX_JUMP_TIME_LENGTH: f32 = 1.0;
 
 
@@ -90,6 +91,7 @@ fn move_player(
     mut ext_impulses: Query<&mut ExternalImpulse, With<Player>>,
     mut ext_forces: Query<&mut ExternalForce, With<Player>>,
     rapier_context: Res<RapierContext>,
+    y_rotation: Res<crate::helpers::YRotation>,
 ) {
     let player_pos = player_transform.get_single().unwrap().translation;
     let player_rot = player_transform.get_single().unwrap().rotation;
@@ -127,12 +129,12 @@ fn move_player(
     // rotation
     if keyboard_input.pressed(KeyCode::J) {
         for mut ext_force in ext_forces.iter_mut() {
-            ext_force.torque = player_rot*Vec3::new(0.0, rot_speed, 0.0);
+            ext_force.torque = player_rot*Vec3::new(0.0, crate::helpers::bool_posneg(y_rotation.heads)*rot_speed, 0.0);
         }
     }
     if keyboard_input.pressed(KeyCode::K) {
         for mut ext_force in ext_forces.iter_mut() {
-            ext_force.torque = player_rot*Vec3::new(0.0, -rot_speed, 0.0);
+            ext_force.torque = player_rot*Vec3::new(0.0, -crate::helpers::bool_posneg(y_rotation.heads)*rot_speed, 0.0);
         }
     }
 
@@ -146,8 +148,8 @@ fn move_player(
         let grounded:bool = cast_ray(rapier_context, player_pos, player_rot);
         if grounded {
             for mut ext_impulse in ext_impulses.iter_mut() {
-                ext_impulse.impulse = Vec3::new(0.0, jump_strength.0*BASE_JUMP_STRNGTH, jump_strength.0*BASE_JUMP_STRNGTH);
-                ext_impulse.torque_impulse = Vec3::new(jump_strength.0*rot_speed ,0.0,0.0);
+                ext_impulse.impulse = Vec3::new(0.0, jump_strength.0*BASE_JUMP_STRNGTH, 0.0);
+                ext_impulse.torque_impulse = y_rotation.quat*Vec3::new(-jump_strength.0*BASE_FLIP_STRNGTH ,0.0,0.0);
             }
         }
         jump_strength.0 = 0.0;

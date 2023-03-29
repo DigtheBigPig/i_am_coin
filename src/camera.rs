@@ -38,15 +38,17 @@ fn camera_setup(
 fn camera_update(
     mut player_camera: Query<&mut Transform, With<PlayerCamera>>,
     query_player_transform: Query<&GlobalTransform, With<crate::player::Player>>,
+    y_rotation: Res<crate::helpers::YRotation>,
 ){
     let player_transform = *query_player_transform.get_single().unwrap();
     let (_, player_rot, player_pos) = player_transform.to_scale_rotation_translation();
     let changed_player_rot = player_rot.to_axis_angle();
-    let quat: Quat = Quat::from_axis_angle(Vec3::new(0.0,1.0,0.0), get_y_rotation(changed_player_rot.0, changed_player_rot.1));
+    
+    //let quat: Quat = Quat::from_axis_angle(Vec3::new(0.0,1.0,0.0), y_rotation);
 
     match player_camera.get_single_mut() {
         Err(_) => panic!("Not one camera"),
-        Ok(mut camera_pos) => *camera_pos = Transform::from_translation(player_pos + quat*CAMERA_RELATIVE).looking_at(player_pos+CAMERA_LOOK, Vec3::Y),
+        Ok(mut camera_pos) => *camera_pos = Transform::from_translation(player_pos + y_rotation.quat*CAMERA_RELATIVE).looking_at(player_pos+CAMERA_LOOK, Vec3::Y),
     }
 }
 
