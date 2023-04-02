@@ -1,13 +1,15 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-mod debug;
+//mod debug;
+mod debug2;
 mod player;
 mod camera;
 mod testmap;
 mod ui;
 mod ui_interaction;
 mod helpers;
+mod controller;
 
 
 
@@ -19,7 +21,7 @@ pub enum AppState {
     Paused,
 }
 
-const INSPECT: bool = false;
+const INSPECT: bool = true;
 
 
 fn main() {
@@ -36,6 +38,8 @@ fn main() {
             ..default()
         }).set(ImagePlugin::default_nearest()))
         .add_state::<AppState>()
+        .add_startup_system(startup_setup)
+
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_plugin(camera::CameraPlugin)
@@ -44,9 +48,10 @@ fn main() {
         .add_plugin(testmap::TestMapPlugin)
         //.add_startup_system(setup_physics)
         .add_plugin(player::PlayerPlugin)
+        .add_plugin(controller::ControllerPlugin)
 
         // ----------  Always Running ----------
-        .add_plugin(debug::DebugPlugin)
+        .add_plugin(debug2::Debug2Plugin)
         .add_plugin(helpers::HelperPlugin)
         
         
@@ -67,4 +72,16 @@ fn main() {
         
         // ----------  Exit Setup ----------
         .run();
+}
+
+fn startup_setup(
+    mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>,
+){
+    let Ok(mut window) = windows.get_single_mut() else {
+        return;
+    };
+    window.set_maximized(true);
+    window.cursor.icon = bevy_window::CursorIcon::Move;
+    window.cursor.visible = false;
+    //.set_cursor_grab_mode(bevy::window::CursorGrabMode::Locked);
 }

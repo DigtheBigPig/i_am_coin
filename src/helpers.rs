@@ -17,13 +17,14 @@ pub struct YRotation{
     pub heads: bool,
     pub quat: Quat, 
     pub look_dir: Quat,
+    pub camera_dir: Quat,
 }
 
 impl Default for YRotation {
     fn default() -> Self {
         // Initialize the cursor pos at some far away place. It will get updated
         // correctly when the cursor moves.
-        Self{heads: true, quat: Quat::default() , look_dir: Quat::default()}
+        Self{heads: true, quat: Quat::default() , look_dir: Quat::default(), camera_dir: Quat::default()}
     }
 }
 
@@ -53,7 +54,13 @@ fn y_rot_update(
     else {
         y_rotation.heads = false;
     }
-    println!("is heads: {:?}", y_rotation.heads);
+    let camera_dir = -bool_posneg(y_rotation.heads)*player_transform.forward();
+    y_rotation.camera_dir = Quat::from_rotation_arc(Vec3::new(0.0,0.0,-1.0), camera_dir);
+    //y_rotation.camera_dir = Quat::from_axis_angle(Vec3::new(0.0,1.0,0.0), -bool_posneg(y_rotation.heads)*player_transform.forward().y);
+    
+    //println!("is heads: {:?}", y_rotation.heads);
+    //println!("camera_dir: {:?}", y_rotation.camera_dir.to_axis_angle());
+    //println!("look_dir: {:?}", look_dir.to_axis_angle());
 
 }
 

@@ -12,33 +12,51 @@ impl Plugin for PlayerPlugin {
         app
             .init_resource::<JumpStrength>()
             .add_startup_system(create_player)
-            .add_system(move_player)
+            //.add_system(move_player)
             ;
     }
 }
 
 const SPAWN_POINT: Vec3 = Vec3::new(0.0,5.0,0.0);
 
+#[derive(Component)]
+pub struct PlayerParent;
 
 
 #[derive(Component)]
 pub struct Player;
 
 
+#[derive(Component)]
+pub struct PlayerCamera;
 
 fn create_player(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    //Debug
+    mut ui_data: ResMut<crate::debug2::UiData>,
 ) {
 
+    /*let camera_id = commands.spawn((PlayerCamera, Camera3dBundle {
+        transform: Transform::from_xyz(0.0, 0.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ..default()
+    })).id();*/
+
+    let material_image: Handle<Image> = asset_server.load("coin_test1.PNG");
+
     let debug_material = materials.add(StandardMaterial {
-        base_color_texture: Some(images.add(uv_debug_texture())),
+        base_color_texture: Some(material_image/*images.add(uv_debug_texture())*/),
+        //base_color_texture: Some(images.add(uv_debug_texture())),
         ..default()
     });
+
+    
+
     // Cylinder
-    commands.spawn((Player, PbrBundle {
+    let player_id = commands.spawn((Player, PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Cylinder{radius: 1.0, height: 0.2, resolution: 32, ..default()})),
         material: debug_material.clone(),//materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
         transform: Transform::from_translation(SPAWN_POINT),
@@ -60,12 +78,22 @@ fn create_player(
         torque: Vec3::ZERO,
     })
     // Damping for air friction and such
-    .insert(Damping { linear_damping: 0.5, angular_damping: 10.0 });
+    .insert(Damping { linear_damping: 0.5, angular_damping: 1.0 }).id();
+
+    /*let player_parent = commands.spawn((PlayerParent, SpatialBundle{
+        transform: Transform::from_translation(SPAWN_POINT),
+        ..default()
+    })).push_children(&[camera_id, player_id]).id();*/
+
+
+    //Debug
+    ui_data.entity = Some(player_id);
+
 }
 
 const SPEED: f32 = 35.0;
 const ROT_SPEED: f32 = 10.0;
-const BASE_JUMP_STRNGTH: f32 = 7.5;
+const BASE_JUMP_STRNGTH: f32 = 6.0;
 const BASE_FLIP_STRNGTH: f32 = 20.0;
 pub const MAX_JUMP_TIME_LENGTH: f32 = 1.0;
 
@@ -82,6 +110,23 @@ impl Default for JumpStrength {
     }
 }
 
+/*fn update_parent_pos(
+    player_transform: Query<&GlobalTransform,With<Player>>,
+    mut parent_transform: Query<&mut Transform,With<PlayerParent>>,
+) {
+    match parent_transform.get_single_mut() {
+        Err(_) => panic!("Not one player parent"),
+        Ok(mut parent_pos) => {
+            match player_transform.get_single() {
+                Err(_) => panic!("Not one player"),
+                Ok(player_pos) => {
+                    *parent_pos = Transform::from_translation(player_pos.translation());
+                }
+            }
+        }
+    }
+}*/
+
 
 fn move_player(
     time: Res<Time>,
@@ -94,7 +139,8 @@ fn move_player(
     y_rotation: Res<crate::helpers::YRotation>,
 ) {
     let player_pos = player_transform.get_single().unwrap().translation;
-    let player_rot = player_transform.get_single().unwrap().rotation;
+    //let player_rot = player_transform.get_single().unwrap().rotation;
+    let player_rot = y_rotation.camera_dir;
     let speed = SPEED; //*time.delta_seconds();
     let rot_speed = ROT_SPEED;
 
@@ -103,17 +149,17 @@ fn move_player(
         ext_force.torque = player_rot*Vec3::new(0.0, 0.0, 0.0);
     }
     // movement
-    /*if keyboard_input.pressed(KeyCode::A) {
+    if keyboard_input.pressed(KeyCode::J) {
         for mut ext_force in ext_forces.iter_mut() {
             ext_force.force = player_rot*Vec3::new(-speed, 0.0, 0.0);
         }
     }
-    if keyboard_input.pressed(KeyCode::D) {
+    if keyboard_input.pressed(KeyCode::K) {
         for mut ext_force in ext_forces.iter_mut() {
             ext_force.force = player_rot*Vec3::new(speed, 0.0, 0.0);
         }
     }
-    if keyboard_input.pressed(KeyCode::W) {
+    /*if keyboard_input.pressed(KeyCode::W) {
         for mut ext_force in ext_forces.iter_mut() {
             ext_force.force = player_rot*Vec3::new(0.0, 0.0, -speed);
         }
@@ -127,12 +173,12 @@ fn move_player(
 
 
     // rotation
-    if keyboard_input.pressed(KeyCode::J) {
+    if keyboard_input.pressed(KeyCode::A) {
         for mut ext_force in ext_forces.iter_mut() {
             ext_force.torque = player_rot*Vec3::new(0.0, crate::helpers::bool_posneg(y_rotation.heads)*rot_speed, 0.0);
         }
     }
-    if keyboard_input.pressed(KeyCode::K) {
+    if keyboard_input.pressed(KeyCode::D) {
         for mut ext_force in ext_forces.iter_mut() {
             ext_force.torque = player_rot*Vec3::new(0.0, -crate::helpers::bool_posneg(y_rotation.heads)*rot_speed, 0.0);
         }
@@ -148,7 +194,7 @@ fn move_player(
         let grounded:bool = cast_ray(rapier_context, player_pos, player_rot);
         if grounded {
             for mut ext_impulse in ext_impulses.iter_mut() {
-                ext_impulse.impulse = Vec3::new(0.0, jump_strength.0*BASE_JUMP_STRNGTH, 0.0);
+                ext_impulse.impulse = y_rotation.quat*Vec3::new(0.0, jump_strength.0*BASE_JUMP_STRNGTH, 2.0*jump_strength.0*BASE_JUMP_STRNGTH);
                 ext_impulse.torque_impulse = y_rotation.quat*Vec3::new(-jump_strength.0*BASE_FLIP_STRNGTH ,0.0,0.0);
             }
         }
@@ -164,7 +210,7 @@ fn move_player(
 
 }
 
-fn cast_ray(rapier_context: Res<RapierContext> , pos: Vec3, dir: Quat) -> bool {
+pub fn cast_ray(rapier_context: Res<RapierContext> , pos: Vec3, dir: Quat) -> bool {
     let ray_pos = pos-dir*Vec3::new(0.0,0.2,0.0);
     let ray_pos_neg = pos+dir*Vec3::new(0.0,0.2,0.0);
     let ray_dir = dir*Vec3::new(0.0, -1.0, 0.0);
