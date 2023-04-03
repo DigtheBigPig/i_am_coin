@@ -37,10 +37,14 @@ fn move_player(
     mut player_camera: Query<&mut Transform, (With<crate::camera::PlayerCamera>, Without<crate::player::Player>)>,
     //query_player_globaltransform: Query<&GlobalTransform, With<crate::player::Player>>,
     mut camera_look: ResMut<crate::camera::CameraLook>,
-    buttons: Res<Input<MouseButton>>,
+    //buttons: Res<Input<MouseButton>>,
     mut motion_evr: EventReader<bevy::input::mouse::MouseMotion>,
     mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>,
+    pause_state: Res<State<crate::pause_menu::PauseState>>,
 ) {
+    if pause_state.0 == crate::pause_menu::PauseState::Paused {
+        return;
+    }
     
     let Ok((mut player_transform, player_global_transform)) = query_player_transform.get_single_mut() else {
         return;
@@ -59,17 +63,7 @@ fn move_player(
         ext_force.force = player_rot*Vec3::new(0.0, 0.0, 0.0);
         ext_force.torque = player_rot*Vec3::new(0.0, 0.0, 0.0);
     }
-    // movement
-    if keyboard_input.pressed(KeyCode::J) {
-        for mut ext_force in ext_forces.iter_mut() {
-            ext_force.force = player_rot*Vec3::new(-speed, 0.0, 0.0);
-        }
-    }
-    if keyboard_input.pressed(KeyCode::K) {
-        for mut ext_force in ext_forces.iter_mut() {
-            ext_force.force = player_rot*Vec3::new(speed, 0.0, 0.0);
-        }
-    }
+    
 
     // movement
     for ev in motion_evr.iter() {
@@ -78,16 +72,6 @@ fn move_player(
     }
 
     camera_look.0.y = camera_look.0.y.clamp(-1.1, 0.40);
-
-    if keyboard_input.just_pressed(KeyCode::Escape) {
-        let Ok(mut window) = windows.get_single_mut() else {
-            return;
-        };
-        window.cursor.icon = bevy_window::CursorIcon::Hand;
-        window.cursor.visible = true;
-    }  
-
-
 
     // rotation
     if keyboard_input.pressed(KeyCode::A) {
@@ -113,6 +97,18 @@ fn move_player(
     if keyboard_input.pressed(KeyCode::S) {
         for mut ext_force in ext_forces.iter_mut() {
             ext_force.force = camera_dirx*Vec3::new(0.0, 0.0, speed);
+        }
+    }
+
+    // movement
+    if keyboard_input.pressed(KeyCode::J) {
+        for mut ext_force in ext_forces.iter_mut() {
+            ext_force.force = camera_dirx*Vec3::new(-speed, 0.0, 0.0);
+        }
+    }
+    if keyboard_input.pressed(KeyCode::K) {
+        for mut ext_force in ext_forces.iter_mut() {
+            ext_force.force = camera_dirx*Vec3::new(speed, 0.0, 0.0);
         }
     }
 

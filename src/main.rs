@@ -10,6 +10,7 @@ mod ui;
 mod ui_interaction;
 mod helpers;
 mod controller;
+mod pause_menu;
 
 
 
@@ -49,6 +50,7 @@ fn main() {
         //.add_startup_system(setup_physics)
         .add_plugin(player::PlayerPlugin)
         .add_plugin(controller::ControllerPlugin)
+        .add_plugin(pause_menu::PauseMenuPlugin)
 
         // ----------  Always Running ----------
         .add_plugin(debug2::Debug2Plugin)
