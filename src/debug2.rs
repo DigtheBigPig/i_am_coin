@@ -4,6 +4,7 @@ use bevy_inspector_egui::inspector_options::std_options::NumberDisplay;
 use bevy_inspector_egui::{prelude::*, DefaultInspectorConfigPlugin};
 use bevy_pbr::PbrBundle;
 use bevy_window::PrimaryWindow;
+use bevy_rapier3d::prelude::*;
 
 #[derive(Reflect, Default, InspectorOptions)]
 #[reflect(InspectorOptions)]
@@ -33,6 +34,7 @@ impl Plugin for Debug2Plugin {
             .register_type::<Config>()
             .register_type::<Shape>()
             .register_type::<UiData>()
+            .add_system(display_events)
             //.add_startup_system(setup)
             .add_system(ui_example);
         }
@@ -91,4 +93,31 @@ fn ui_example(world: &mut World) {
             bevy_inspector_egui::bevy_inspector::ui_for_resource::<UiData>(world, ui);
         });
     });
+}
+
+/* A system that displays the events. */
+fn display_events(
+    mut collision_events: EventReader<CollisionEvent>,
+    mut contact_force_events: EventReader<ContactForceEvent>,
+    mut query_player: Query<&mut crate::player::Player, With<crate::player::Player>>,
+    mut head_text_query: Query<&mut Text, (With<crate::ui::HeadIndicator>, Without<crate::ui::TailIndicator>)>,
+    mut tail_text_query: Query<&mut Text, (With<crate::ui::TailIndicator>, Without<crate::ui::HeadIndicator>)>,
+) {
+    for collision_event in collision_events.iter() {
+        println!("Received collision event: {:?}", collision_event);
+        let Ok(mut player) = query_player.get_single_mut() else {
+            return;
+        };
+        player.head = crate::player::PlayerSide::Sticky;
+
+        let mut head_text = head_text_query.get_single_mut().unwrap();
+        head_text.sections[0].value = format!("Heads: {:?}", player.head);
+
+        let mut tail_text = tail_text_query.get_single_mut().unwrap();
+        tail_text.sections[0].value = format!("Tails: {:?}", player.tail);
+    }
+
+    for contact_force_event in contact_force_events.iter() {
+        println!("Received contact force event: {:?}", contact_force_event);
+    }
 }

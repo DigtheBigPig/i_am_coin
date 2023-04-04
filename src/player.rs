@@ -19,12 +19,23 @@ impl Plugin for PlayerPlugin {
 
 const SPAWN_POINT: Vec3 = Vec3::new(0.0,5.0,0.0);
 
+#[derive(Default, Debug)]
+pub enum PlayerSide {
+    #[default]
+    Normal,
+    Sticky,
+    Slippey,
+}
+
 #[derive(Component)]
 pub struct PlayerParent;
 
 
-#[derive(Component)]
-pub struct Player;
+#[derive(Component, Default)]
+pub struct Player{
+    pub head: PlayerSide,
+    pub tail: PlayerSide,
+}
 
 
 #[derive(Component)]
@@ -56,8 +67,9 @@ fn create_player(
     
 
     // Cylinder
-    let player_id = commands.spawn((Player, PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Cylinder{radius: 1.0, height: 0.2, resolution: 32, ..default()})),
+    let player_id = commands.spawn((Player::default(), PbrBundle {
+        //mesh: meshes.add(Mesh::from(shape::Cylinder{radius: 1.0, height: 0.2, resolution: 12, ..default()})),
+        mesh: meshes.add(Mesh::from(shape::Box::new(1.0,0.2,1.0))),
         material: debug_material.clone(),//materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
         transform: Transform::from_translation(SPAWN_POINT),
         ..default()
@@ -65,7 +77,7 @@ fn create_player(
     // Add rigidbody
     .insert(RigidBody::Dynamic)
     // Add colider
-    .insert(Collider::cylinder(0.1, 1.0))
+    .insert(Collider::cuboid(0.5, 0.1, 0.5))
     // Add gravity
     .insert(GravityScale(1.0))
     // Outside impulse/forces(for movement)
@@ -77,8 +89,10 @@ fn create_player(
         force: Vec3::ZERO,
         torque: Vec3::ZERO,
     })
+    .insert(Friction::coefficient(0.7))
     // Damping for air friction and such
-    .insert(Damping { linear_damping: 0.5, angular_damping: 1.0 }).id();
+    .insert(Damping { linear_damping: 0.5, angular_damping: 1.0 })
+    .insert(Ccd::enabled()).id();
 
     /*let player_parent = commands.spawn((PlayerParent, SpatialBundle{
         transform: Transform::from_translation(SPAWN_POINT),

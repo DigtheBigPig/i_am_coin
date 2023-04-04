@@ -140,6 +140,8 @@ fn move_player(
         player_transform.translation = Vec3::ZERO + SPAWN_POINT;
         player_transform.rotation = Quat::IDENTITY;
     }
+
+    
     
 
 }
