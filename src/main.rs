@@ -1,18 +1,12 @@
+#![allow(warnings, unused)]
 use bevy::prelude::*;
-use bevy_rapier3d::prelude::*;
+use bevy_xpbd_3d::{math::*, prelude::*, PhysicsSchedule, PhysicsStepSet};
 
-//mod debug;
-mod debug2;
 mod player;
-mod camera;
-mod testmap;
-mod ui;
-mod ui_interaction;
 mod helpers;
-mod controller;
-mod pause_menu;
+mod game_const;
 
-
+use crate::game_const::*;
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 pub enum AppState {
@@ -33,38 +27,27 @@ fn main() {
                 title: String::from(
                     "I am Coin!",
                 ),
-                mode: bevy_window::WindowMode::Windowed,
                 ..Default::default()
             }),
             ..default()
         }).set(ImagePlugin::default_nearest()))
         .add_state::<AppState>()
-        .add_startup_system(startup_setup)
+        .add_systems(Startup, startup_setup)
+        .add_systems(Update, debugging_ctrls)
 
-        .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
-        .add_plugin(RapierDebugRenderPlugin::default())
-        .add_plugin(camera::CameraPlugin)
-        .add_plugin(ui::UiPlugin)
-        .add_plugin(ui_interaction::UiInteractionPlugin)
-        .add_plugin(testmap::TestMapPlugin)
+        .add_plugins(PhysicsPlugins::default())
         //.add_startup_system(setup_physics)
-        .add_plugin(player::PlayerPlugin)
-        .add_plugin(controller::ControllerPlugin)
-        .add_plugin(pause_menu::PauseMenuPlugin)
+        .add_plugins(player::PlayerPlugin)
 
         // ----------  Always Running ----------
-        .add_plugin(debug2::Debug2Plugin)
-        .add_plugin(helpers::HelperPlugin)
+        .add_plugins(helpers::HelperPlugin)
         
         
         // ----------  Menu Enter ----------
-        //.add_system(main_menu::ui_setup.in_schedule(OnEnter(AppState::Menu)))
         
         // ----------  Menu Exit ----------
-        //.add_system(main_menu::button_system)
         
         // ----------  InGame Enter ----------
-        //.add_system(music::setup.in_schedule(OnEnter(AppState::InGame)))
         
         // ----------  InGame Exit ----------
 
@@ -83,7 +66,25 @@ fn startup_setup(
         return;
     };
     window.set_maximized(true);
-    window.cursor.icon = bevy_window::CursorIcon::Move;
+    window.cursor.icon = CursorIcon::Move;
     window.cursor.visible = false;
-    //.set_cursor_grab_mode(bevy::window::CursorGrabMode::Locked);
+}
+
+fn debugging_ctrls(
+    keyboard_input: Res<Input<KeyCode>>,
+    mut player_transform: Query<(&mut Transform, &mut Position),With<crate::player::Player>>,
+    colliders: Query<(&Collider, &GlobalTransform)>,
+
+) {
+    // RESET
+    if keyboard_input.just_pressed(KeyCode::R) {
+        for (mut transfrom, mut position) in player_transform.iter_mut() {
+            transfrom.translation = Vec3::ZERO + SPAWN_POINT;
+            transfrom.rotation = Quat::IDENTITY;
+            position.0 = (Vec3::ZERO + SPAWN_POINT).into();
+        }
+        for (collider, transform) in colliders.iter() {
+            println!("collider: {:?}, position: {:?}", collider, transform.translation());
+        }
+    }
 }

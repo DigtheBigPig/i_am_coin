@@ -12,10 +12,7 @@ opt-level = 1
 opt-level = 3
 
 [dependencies]
-bevy = "0.10.0"
-bevy-inspector-egui = "0.18.1"
-bevy_egui = "0.20.2"
+bevy = "0.11.2"
 bevy_pbr = "0.10.1"
-bevy_rapier3d = "0.21.0"
 bevy_window = "0.10.0"
-egui = "0.21.0"
+bevy_xpbd_3d = "0.2.0"

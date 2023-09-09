@@ -7,7 +7,7 @@ impl Plugin for HelperPlugin {
     fn build(&self, app: &mut App) {
         app
             .init_resource::<YRotation>()
-            .add_system(y_rot_update)
+            .add_systems(Update, y_rot_update)
             ;
     }
 }

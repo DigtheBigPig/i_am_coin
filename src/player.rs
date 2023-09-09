@@ -1,273 +1,202 @@
+//! A very basic implementation of a character controller for a dynamic rigid body.
+//! Supports directional movement and jumping.
+//!
+//! Bevy XPBD does not have a built-in character controller yet, so you will have to implement
+//! the logic yourself.
+//!
+//! For a kinematic character controller, see the `basic_kinematic_character` example.
 
-use bevy::{
-    prelude::*,
-    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
-};
-use bevy_rapier3d::prelude::*;
+use std::f32::consts::PI;
+
+use bevy::{prelude::*, utils::hashbrown::raw::Global};
+use bevy_xpbd_3d::{math::*, prelude::*, PhysicsSchedule, PhysicsStepSet};
+use crate::game_const::*;
 
 pub struct PlayerPlugin;  
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app
-            .init_resource::<JumpStrength>()
-            .add_startup_system(create_player)
-            //.add_system(move_player)
+            //.init_resource::<JumpStrength>()
+            .add_systems(Startup, setup)
+            .add_systems(PhysicsSchedule, movement.before(PhysicsStepSet::BroadPhase))
             ;
     }
 }
 
-const SPAWN_POINT: Vec3 = Vec3::new(0.0,5.0,0.0);
-
-#[derive(Default, Debug)]
-pub enum PlayerSide {
-    #[default]
-    Normal,
-    Sticky,
-    Slippey,
-}
+#[derive(Component)]
+pub struct Player;
 
 #[derive(Component)]
-pub struct PlayerParent;
-
-
-#[derive(Component, Default)]
-pub struct Player{
-    pub head: PlayerSide,
-    pub tail: PlayerSide,
+pub struct PlayerJump {
+    dir: Direction
 }
 
+pub enum Direction {
+    Up,
+    Down,
+}
 
-#[derive(Component)]
-pub struct PlayerCamera;
-
-fn create_player(
+fn setup(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    //Debug
-    mut ui_data: ResMut<crate::debug2::UiData>,
 ) {
+    // Ground
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Plane::from_size(8.0))),
+            material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
+            ..default()
+        },
+        RigidBody::Static,
+        Collider::cuboid(8.0, 0.005, 8.0),
+    ));
 
-    /*let camera_id = commands.spawn((PlayerCamera, Camera3dBundle {
-        transform: Transform::from_xyz(0.0, 0.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    })).id();*/
+    // Wall
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Plane::from_size(8.0))),
+            material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
+            transform: Transform::from_rotation(Quat::from_euler(EulerRot::XZY, 0.0, PI/2.0, 0.0)).with_translation(Vec3::new(4.0,4.0,0.0)),
+            ..default()
+        },
+        RigidBody::Static,
+        Collider::cuboid(8.0, 0.005, 8.0),
+    ));
 
-    let material_image: Handle<Image> = asset_server.load("coin_test1.PNG");
+    // Player
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Cylinder {
+                radius: 1.0,
+                height: 0.2,
+                ..default()
+            })),
+            material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+            ..default()
+        },
+        RigidBody::Dynamic,
+        Position(Vector::Y * 1.0),
+        Collider::cylinder(0.2, 1.0),
+        // Prevent the player from falling over
+        //LockedAxes::new().lock_rotation_x().lock_rotation_z(),
+        // Cast the player shape downwards to detect when the player is grounded
+        
+        
+        Restitution::new(0.0).with_combine_rule(CoefficientCombine::Min),
+        GravityScale(2.0),
+        Player,
+    )).with_children(|parent| {
+        parent.spawn(
+            (
+                PlayerJump { dir: Direction::Down },
+                ShapeCaster::new(
+                    Collider::cylinder(0.1, 0.95),
+                    Vector::NEG_Y * 0.05,
+                    Quaternion::default(),
+                    Vector::NEG_Y,
+                ).with_ignore_origin_penetration(true) // Don't count player's collider
+                .with_max_time_of_impact(0.2)
+                .with_max_hits(1),
+            )
+        );
+        parent.spawn(
+            (
+                PlayerJump { dir: Direction::Up },
+                ShapeCaster::new(
+                    Collider::cylinder(0.1, 0.95),
+                    Vector::Y * 0.05,
+                    Quaternion::default(),
+                    Vector::Y,
+                ).with_ignore_origin_penetration(true) // Don't count player's collider
+                .with_max_time_of_impact(0.2)
+                .with_max_hits(1),
+            )
+        );
+    });
 
-    let debug_material = materials.add(StandardMaterial {
-        base_color_texture: Some(material_image/*images.add(uv_debug_texture())*/),
-        //base_color_texture: Some(images.add(uv_debug_texture())),
+    // Light
+    commands.spawn(PointLightBundle {
+        point_light: PointLight {
+            intensity: 1500.0,
+            shadows_enabled: true,
+            ..default()
+        },
+        transform: Transform::from_xyz(4.0, 8.0, 4.0),
         ..default()
     });
 
-    
-
-    // Cylinder
-    let player_id = commands.spawn((Player::default(), PbrBundle {
-        //mesh: meshes.add(Mesh::from(shape::Cylinder{radius: 1.0, height: 0.2, resolution: 12, ..default()})),
-        mesh: meshes.add(Mesh::from(shape::Box::new(1.0,0.2,1.0))),
-        material: debug_material.clone(),//materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-        transform: Transform::from_translation(SPAWN_POINT),
+    // Camera
+    commands.spawn(Camera3dBundle {
+        transform: Transform::from_xyz(-4.0, 6.5, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
         ..default()
-    }))
-    // Add rigidbody
-    .insert(RigidBody::Dynamic)
-    // Add colider
-    .insert(Collider::cuboid(0.5, 0.1, 0.5))
-    // Add gravity
-    .insert(GravityScale(1.0))
-    // Outside impulse/forces(for movement)
-    .insert(ExternalImpulse {
-        impulse: Vec3::ZERO,
-        torque_impulse: Vec3::ZERO,
-    })
-    .insert(ExternalForce {
-        force: Vec3::ZERO,
-        torque: Vec3::ZERO,
-    })
-    .insert(Friction::coefficient(0.7))
-    // Damping for air friction and such
-    .insert(Damping { linear_damping: 0.5, angular_damping: 1.0 })
-    .insert(Ccd::enabled()).id();
-
-    /*let player_parent = commands.spawn((PlayerParent, SpatialBundle{
-        transform: Transform::from_translation(SPAWN_POINT),
-        ..default()
-    })).push_children(&[camera_id, player_id]).id();*/
-
-
-    //Debug
-    ui_data.entity = Some(player_id);
-
+    });
 }
 
-const SPEED: f32 = 35.0;
-const ROT_SPEED: f32 = 10.0;
-const BASE_JUMP_STRNGTH: f32 = 6.0;
-const BASE_FLIP_STRNGTH: f32 = 20.0;
-pub const MAX_JUMP_TIME_LENGTH: f32 = 1.0;
-
-
-
-
-#[derive(Resource, Debug)]
-pub struct JumpStrength(pub f32);
-impl Default for JumpStrength {
-    fn default() -> Self {
-        // Initialize the cursor pos at some far away place. It will get updated
-        // correctly when the cursor moves.
-        Self(0.0)
-    }
-}
-
-/*fn update_parent_pos(
-    player_transform: Query<&GlobalTransform,With<Player>>,
-    mut parent_transform: Query<&mut Transform,With<PlayerParent>>,
-) {
-    match parent_transform.get_single_mut() {
-        Err(_) => panic!("Not one player parent"),
-        Ok(mut parent_pos) => {
-            match player_transform.get_single() {
-                Err(_) => panic!("Not one player"),
-                Ok(player_pos) => {
-                    *parent_pos = Transform::from_translation(player_pos.translation());
-                }
-            }
-        }
-    }
-}*/
-
-
-fn move_player(
-    time: Res<Time>,
-    mut jump_strength: ResMut<JumpStrength>,
-    mut player_transform: Query<&mut Transform,With<Player>>,
+fn movement(
     keyboard_input: Res<Input<KeyCode>>,
-    mut ext_impulses: Query<&mut ExternalImpulse, With<Player>>,
-    mut ext_forces: Query<&mut ExternalForce, With<Player>>,
-    rapier_context: Res<RapierContext>,
-    y_rotation: Res<crate::helpers::YRotation>,
+    mut players: Query<&mut LinearVelocity>,
+    mut jump_query: Query<(&ShapeHits, &PlayerJump)>,
+    query_player_transform: Query<&GlobalTransform, With<Player>>,
+    mut motion_evr: EventReader<bevy::input::mouse::MouseMotion>,
 ) {
-    let player_pos = player_transform.get_single().unwrap().translation;
-    //let player_rot = player_transform.get_single().unwrap().rotation;
-    let player_rot = y_rotation.camera_dir;
-    let speed = SPEED; //*time.delta_seconds();
-    let rot_speed = ROT_SPEED;
-
-    for mut ext_force in ext_forces.iter_mut() {
-        ext_force.force = player_rot*Vec3::new(0.0, 0.0, 0.0);
-        ext_force.torque = player_rot*Vec3::new(0.0, 0.0, 0.0);
-    }
-    // movement
-    if keyboard_input.pressed(KeyCode::J) {
-        for mut ext_force in ext_forces.iter_mut() {
-            ext_force.force = player_rot*Vec3::new(-speed, 0.0, 0.0);
+    for (mut linear_velocity) in &mut players {
+        // Directional movement
+        let mut velocity_change = Vec3::ZERO;
+        if keyboard_input.pressed(KeyCode::W) || keyboard_input.pressed(KeyCode::Up) {
+            velocity_change.z -= 1.2;
         }
-    }
-    if keyboard_input.pressed(KeyCode::K) {
-        for mut ext_force in ext_forces.iter_mut() {
-            ext_force.force = player_rot*Vec3::new(speed, 0.0, 0.0);
+        if keyboard_input.pressed(KeyCode::S) || keyboard_input.pressed(KeyCode::Down) {
+            velocity_change.z += 1.2;
         }
-    }
-    /*if keyboard_input.pressed(KeyCode::W) {
-        for mut ext_force in ext_forces.iter_mut() {
-            ext_force.force = player_rot*Vec3::new(0.0, 0.0, -speed);
+        if keyboard_input.pressed(KeyCode::A) || keyboard_input.pressed(KeyCode::Left) {
+            velocity_change.x -= 1.2;
         }
-    }
-    if keyboard_input.pressed(KeyCode::S) {
-        for mut ext_force in ext_forces.iter_mut() {
-            ext_force.force = player_rot*Vec3::new(0.0, 0.0, speed);
+        if keyboard_input.pressed(KeyCode::D) || keyboard_input.pressed(KeyCode::Right) {
+            velocity_change.x += 1.2;
         }
-    }*/
 
-
-
-    // rotation
-    if keyboard_input.pressed(KeyCode::A) {
-        for mut ext_force in ext_forces.iter_mut() {
-            ext_force.torque = player_rot*Vec3::new(0.0, crate::helpers::bool_posneg(y_rotation.heads)*rot_speed, 0.0);
-        }
-    }
-    if keyboard_input.pressed(KeyCode::D) {
-        for mut ext_force in ext_forces.iter_mut() {
-            ext_force.torque = player_rot*Vec3::new(0.0, -crate::helpers::bool_posneg(y_rotation.heads)*rot_speed, 0.0);
-        }
-    }
-
-
-    // JUMP
-    if keyboard_input.pressed(KeyCode::Space) {
-        jump_strength.0 += time.delta_seconds();
-        jump_strength.0 = jump_strength.0.clamp(0.0, MAX_JUMP_TIME_LENGTH);
-    }
-    if keyboard_input.just_released(KeyCode::Space) {
-        let grounded:bool = cast_ray(rapier_context, player_pos, player_rot);
-        if grounded {
-            for mut ext_impulse in ext_impulses.iter_mut() {
-                ext_impulse.impulse = y_rotation.quat*Vec3::new(0.0, jump_strength.0*BASE_JUMP_STRNGTH, 2.0*jump_strength.0*BASE_JUMP_STRNGTH);
-                ext_impulse.torque_impulse = y_rotation.quat*Vec3::new(-jump_strength.0*BASE_FLIP_STRNGTH ,0.0,0.0);
+        // Jump if space pressed and the player is close enough to the ground
+        for (ground_hits, player_jump) in jump_query.iter() {
+            if keyboard_input.just_pressed(KeyCode::Space) && !ground_hits.is_empty() {
+                match player_jump.dir {
+                    Direction::Down => linear_velocity.y += 8.0,
+                    Direction::Up => linear_velocity.y += 8.0,
+                };
             }
         }
-        jump_strength.0 = 0.0;
+
+        let sens_x = 0.5;
+        let sens_y = 0.5;
+
+
+        // movement
+        //for ev in motion_evr.iter() {
+            //camera_look.0.x -= ev.delta.x*sens_x*SENS_X;
+            //camera_look.0.y -= ev.delta.y*sens_y*SENS_Y;
+
+            //println!("Mouse moved: X: {} px, Y: {} px", ev.delta.x, ev.delta.y);
+        //}
+
+        //camera_look.0.y = camera_look.0.y.clamp(-1.1, 0.40);
+        
+        //let camera_dirx = Quat::from_axis_angle(Vec3::Y, camera_look.0.x);
+        //velocity_change = camera_dirx*velocity_change;
+
+        linear_velocity.x += velocity_change.x;
+        linear_velocity.z += velocity_change.z;
+
+        // Slow player down on the x and y axes
+        linear_velocity.x *= 0.8;
+        linear_velocity.z *= 0.8;
     }
-
-
-    // RESET
-    if keyboard_input.pressed(KeyCode::R) {
-        player_transform.get_single_mut().unwrap().translation = Vec3::ZERO + SPAWN_POINT;
-        player_transform.get_single_mut().unwrap().rotation = Quat::IDENTITY;
-    }
-
 }
 
-pub fn cast_ray(rapier_context: Res<RapierContext> , pos: Vec3, dir: Quat) -> bool {
-    let ray_pos = pos-dir*Vec3::new(0.0,0.2,0.0);
-    let ray_pos_neg = pos+dir*Vec3::new(0.0,0.2,0.0);
-    let ray_dir = dir*Vec3::new(0.0, -1.0, 0.0);
-    let max_toi = 0.1;
-    let solid = true;
 
-    if let Some((_,_)) = rapier_context.cast_ray(
-        ray_pos, ray_dir, max_toi, solid, default()
-    ) {
-        return true;
-    }
-    if let Some((_,_)) = rapier_context.cast_ray(
-        ray_pos_neg, -ray_dir, max_toi, solid, default()
-    ) {
-        return true;
-    }
-    return false;
-    
-}
+fn camera_follow(
+    player_query: Query<&GlobalTransform, With<Player>>,
+    mut camera_query: Query<&mut Transform, With<Camera>>,
+) {
 
-fn uv_debug_texture() -> Image {
-    const TEXTURE_SIZE: usize = 8;
-
-    let mut palette: [u8; 32] = [
-        255, 102, 159, 255, 255, 159, 102, 255, 236, 255, 102, 255, 121, 255, 102, 255, 102, 255,
-        198, 255, 102, 198, 255, 255, 121, 102, 255, 255, 236, 102, 255, 255,
-    ];
-
-    let mut texture_data = [0; TEXTURE_SIZE * TEXTURE_SIZE * 4];
-    for y in 0..TEXTURE_SIZE {
-        let offset = TEXTURE_SIZE * y * 4;
-        texture_data[offset..(offset + TEXTURE_SIZE * 4)].copy_from_slice(&palette);
-        palette.rotate_right(4);
-    }
-
-    Image::new_fill(
-        Extent3d {
-            width: TEXTURE_SIZE as u32,
-            height: TEXTURE_SIZE as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        &texture_data,
-        TextureFormat::Rgba8UnormSrgb,
-    )
 }
